@@ -1,13 +1,7 @@
 import os
 import base64
 import shutil
-from pathlib import Path
-import streamlit as st
-import requests
-from dotenv import load_dotenv
-import time
 
-load_dotenv()
 NOVITA_API_KEY = os.getenv("NOVITA_API_KEY")
 BACKEND_URL = "https://api.novita.ai/openai/v1/chat/completions"
 
