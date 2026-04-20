@@ -20,7 +20,6 @@ DELETED_DIR = Path("deleted")
 UPLOAD_DIR.mkdir(exist_ok=True)
 DELETED_DIR.mkdir(exist_ok=True)
 
-# 初始化 session_state
 if "image_files" not in st.session_state:
     st.session_state.image_files = []
 if "cleaned_count" not in st.session_state:
@@ -28,10 +27,9 @@ if "cleaned_count" not in st.session_state:
 if "show_main" not in st.session_state:
     st.session_state.show_main = False
 if "analysis_results" not in st.session_state:
-    st.session_state.analysis_results = {}  # {file_path: (category, confidence)}
+    st.session_state.analysis_results = {}
 
 def analyze_image(image_path):
-    """分析单张图片，结果存入 analysis_results"""
     if image_path in st.session_state.analysis_results:
         return st.session_state.analysis_results[image_path]
     with open(image_path, "rb") as f:
@@ -66,36 +64,46 @@ def analyze_image(image_path):
         return "Error", 0.0
 
 def move_to_deleted(file_path):
-    """移动文件到回收站，并从所有状态中移除"""
     src = Path(file_path)
     dst = DELETED_DIR / src.name
     shutil.move(str(src), str(dst))
     st.session_state.cleaned_count += 1
-    # 从列表中移除
     if file_path in st.session_state.image_files:
         st.session_state.image_files.remove(file_path)
-    # 删除分析结果
     if file_path in st.session_state.analysis_results:
         del st.session_state.analysis_results[file_path]
 
 def delete_all_suggested():
-    """一键删除所有建议删除的图片"""
+    """一键删除所有建议删除的图片（修复版）"""
     to_delete = [fp for fp in st.session_state.image_files 
                  if st.session_state.analysis_results.get(fp, ("Normal",0))[0] in ["Screenshot", "Blurry"]]
-    for fp in to_delete:
-        move_to_deleted(fp)
-    if to_delete:
-        st.rerun()
-    else:
+    if not to_delete:
         st.info("没有可清理的图片")
+        return
+    deleted_count = 0
+    for fp in to_delete:
+        try:
+            src = Path(fp)
+            dst = DELETED_DIR / src.name
+            shutil.move(str(src), str(dst))
+            deleted_count += 1
+            if fp in st.session_state.image_files:
+                st.session_state.image_files.remove(fp)
+            if fp in st.session_state.analysis_results:
+                del st.session_state.analysis_results[fp]
+        except Exception as e:
+            st.error(f"删除失败 {fp}: {e}")
+    st.session_state.cleaned_count += deleted_count
+    if deleted_count > 0:
+        st.success(f"已清理 {deleted_count} 张图片")
+        time.sleep(0.5)
+        st.rerun()
 
 def analyze_all_images():
-    """一键分析所有未分析的图片，显示彩虹动画"""
     to_analyze = [fp for fp in st.session_state.image_files if fp not in st.session_state.analysis_results]
     if not to_analyze:
         st.info("所有图片都已分析过")
         return
-
     anim_placeholder = st.empty()
     anim_html = """
     <div style="display: flex; justify-content: center; align-items: center; margin: 20px;">
@@ -138,10 +146,8 @@ def analyze_all_images():
     """
     anim_placeholder.markdown(anim_html, unsafe_allow_html=True)
     time.sleep(0.3)
-
     for fp in to_analyze:
         analyze_image(fp)
-
     anim_placeholder.empty()
     st.success(f"已完成 {len(to_analyze)} 张图片的分析")
     time.sleep(0.5)
@@ -235,12 +241,10 @@ if st.session_state.image_files:
         with cols[idx % 3]:
             st.image(img_path, use_container_width=True)
             st.caption(Path(img_path).name)
-            # 单张分析按钮
             if st.button("分析", key=f"ana_{img_path}"):
                 with st.spinner("分析中..."):
                     analyze_image(img_path)
                 st.rerun()
-            # 显示分析结果
             if img_path in st.session_state.analysis_results:
                 cat, conf = st.session_state.analysis_results[img_path]
                 if cat in ["Screenshot", "Blurry"]:
