@@ -62,19 +62,24 @@ def move_to_deleted(file_path):
     st.session_state.cleaned_count += 1
 
 def delete_all_suggested():
-    to_delete = []
+    # 收集所有建议删除的图片索引（倒序避免索引错乱）
+    to_remove_indices = []
     for idx, img_path in enumerate(st.session_state.image_files):
         if st.session_state.get(f"analyzed_{idx}", False):
             cat = st.session_state.get(f"cat_{idx}", "")
             if cat in ["Screenshot", "Blurry"]:
-                to_delete.append((idx, img_path))
-    for idx, img_path in reversed(to_delete):
+                to_remove_indices.append(idx)
+    # 倒序删除
+    for idx in reversed(to_remove_indices):
+        img_path = st.session_state.image_files[idx]
         move_to_deleted(img_path)
-        st.session_state.image_files.pop(idx)
+        # 删除该图片对应的 session_state 键
         for key in [f"cat_{idx}", f"conf_{idx}", f"analyzed_{idx}"]:
             if key in st.session_state:
                 del st.session_state[key]
-    st.session_state.cleaned_count += len(to_delete)
+        # 从列表中移除
+        st.session_state.image_files.pop(idx)
+    # 重新整理后续图片的索引（因为列表长度变化，需要重建或直接 rerun）
     st.rerun()
 
 def analyze_all_images():
@@ -83,7 +88,6 @@ def analyze_all_images():
         st.info("所有图片都已分析过")
         return
 
-    # 彩虹动画（保证只显示动画，不显示HTML源码）
     anim_placeholder = st.empty()
     anim_html = """
     <div style="display: flex; justify-content: center; align-items: center; margin: 20px;">
@@ -125,7 +129,7 @@ def analyze_all_images():
     </style>
     """
     anim_placeholder.markdown(anim_html, unsafe_allow_html=True)
-    time.sleep(0.3)  # 确保动画显示
+    time.sleep(0.3)
 
     for idx, img_path in to_analyze:
         category, confidence = analyze_image(img_path)
@@ -240,9 +244,11 @@ if st.session_state.image_files:
                     st.markdown(f'<div style="background-color:#EE475D; padding:8px; border-radius:8px; color:white;">建议删除 ({cat})<br>置信度 {conf:.0%}</div>', unsafe_allow_html=True)
                     if st.button("删除", key=f"del_{idx}"):
                         move_to_deleted(img_path)
+                        # 清除该图片的所有状态
+                        for key in [f"cat_{idx}", f"conf_{idx}", f"analyzed_{idx}"]:
+                            if key in st.session_state:
+                                del st.session_state[key]
                         st.session_state.image_files.pop(idx)
-                        for k in [f"cat_{idx}", f"conf_{idx}", f"analyzed_{idx}"]:
-                            if k in st.session_state: del st.session_state[k]
                         st.rerun()
                 elif cat == "Normal":
                     st.markdown(f'<div style="background-color:#6E8B74; padding:8px; border-radius:8px; color:white;">建议保留<br>置信度 {conf:.0%}</div>', unsafe_allow_html=True)
