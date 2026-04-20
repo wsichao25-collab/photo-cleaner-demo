@@ -20,14 +20,20 @@ DELETED_DIR = Path("deleted")
 UPLOAD_DIR.mkdir(exist_ok=True)
 DELETED_DIR.mkdir(exist_ok=True)
 
+# 初始化 session_state
 if "image_files" not in st.session_state:
     st.session_state.image_files = []
 if "cleaned_count" not in st.session_state:
     st.session_state.cleaned_count = 0
 if "show_main" not in st.session_state:
     st.session_state.show_main = False
+if "analysis_results" not in st.session_state:
+    st.session_state.analysis_results = {}  # {file_path: (category, confidence)}
 
 def analyze_image(image_path):
+    """分析单张图片，结果存入 analysis_results"""
+    if image_path in st.session_state.analysis_results:
+        return st.session_state.analysis_results[image_path]
     with open(image_path, "rb") as f:
         img_base64 = base64.b64encode(f.read()).decode()
     headers = {"Authorization": f"Bearer {NOVITA_API_KEY}", "Content-Type": "application/json"}
@@ -48,42 +54,44 @@ def analyze_image(image_path):
         resp.raise_for_status()
         result = resp.json()["choices"][0]["message"]["content"]
         if "Screenshot" in result:
-            return "Screenshot", 0.9
-        if "Blurry" in result:
-            return "Blurry", 0.8
-        return "Normal", 0.7
+            cat, conf = "Screenshot", 0.9
+        elif "Blurry" in result:
+            cat, conf = "Blurry", 0.8
+        else:
+            cat, conf = "Normal", 0.7
+        st.session_state.analysis_results[image_path] = (cat, conf)
+        return cat, conf
     except Exception:
+        st.session_state.analysis_results[image_path] = ("Error", 0.0)
         return "Error", 0.0
 
 def move_to_deleted(file_path):
+    """移动文件到回收站，并从所有状态中移除"""
     src = Path(file_path)
     dst = DELETED_DIR / src.name
     shutil.move(str(src), str(dst))
     st.session_state.cleaned_count += 1
+    # 从列表中移除
+    if file_path in st.session_state.image_files:
+        st.session_state.image_files.remove(file_path)
+    # 删除分析结果
+    if file_path in st.session_state.analysis_results:
+        del st.session_state.analysis_results[file_path]
 
 def delete_all_suggested():
-    # 收集所有建议删除的图片索引（倒序避免索引错乱）
-    to_remove_indices = []
-    for idx, img_path in enumerate(st.session_state.image_files):
-        if st.session_state.get(f"analyzed_{idx}", False):
-            cat = st.session_state.get(f"cat_{idx}", "")
-            if cat in ["Screenshot", "Blurry"]:
-                to_remove_indices.append(idx)
-    # 倒序删除
-    for idx in reversed(to_remove_indices):
-        img_path = st.session_state.image_files[idx]
-        move_to_deleted(img_path)
-        # 删除该图片对应的 session_state 键
-        for key in [f"cat_{idx}", f"conf_{idx}", f"analyzed_{idx}"]:
-            if key in st.session_state:
-                del st.session_state[key]
-        # 从列表中移除
-        st.session_state.image_files.pop(idx)
-    # 重新整理后续图片的索引（因为列表长度变化，需要重建或直接 rerun）
-    st.rerun()
+    """一键删除所有建议删除的图片"""
+    to_delete = [fp for fp in st.session_state.image_files 
+                 if st.session_state.analysis_results.get(fp, ("Normal",0))[0] in ["Screenshot", "Blurry"]]
+    for fp in to_delete:
+        move_to_deleted(fp)
+    if to_delete:
+        st.rerun()
+    else:
+        st.info("没有可清理的图片")
 
 def analyze_all_images():
-    to_analyze = [(idx, p) for idx, p in enumerate(st.session_state.image_files) if not st.session_state.get(f"analyzed_{idx}", False)]
+    """一键分析所有未分析的图片，显示彩虹动画"""
+    to_analyze = [fp for fp in st.session_state.image_files if fp not in st.session_state.analysis_results]
     if not to_analyze:
         st.info("所有图片都已分析过")
         return
@@ -131,11 +139,8 @@ def analyze_all_images():
     anim_placeholder.markdown(anim_html, unsafe_allow_html=True)
     time.sleep(0.3)
 
-    for idx, img_path in to_analyze:
-        category, confidence = analyze_image(img_path)
-        st.session_state[f"cat_{idx}"] = category
-        st.session_state[f"conf_{idx}"] = confidence
-        st.session_state[f"analyzed_{idx}"] = True
+    for fp in to_analyze:
+        analyze_image(fp)
 
     anim_placeholder.empty()
     st.success(f"已完成 {len(to_analyze)} 张图片的分析")
@@ -210,12 +215,12 @@ with st.sidebar:
 uploaded_files = st.file_uploader("选择图片", type=["jpg","jpeg","png"], accept_multiple_files=True)
 if uploaded_files:
     for file in uploaded_files:
-        save_path = UPLOAD_DIR / file.name
-        if not save_path.exists():
+        save_path = str(UPLOAD_DIR / file.name)
+        if not os.path.exists(save_path):
             with open(save_path, "wb") as f:
                 f.write(file.getbuffer())
-        if str(save_path) not in st.session_state.image_files:
-            st.session_state.image_files.append(str(save_path))
+        if save_path not in st.session_state.image_files:
+            st.session_state.image_files.append(save_path)
 
 if st.session_state.image_files:
     col_title, col_btn = st.columns([3, 1])
@@ -230,28 +235,25 @@ if st.session_state.image_files:
         with cols[idx % 3]:
             st.image(img_path, use_container_width=True)
             st.caption(Path(img_path).name)
-            if st.button("分析", key=f"ana_{idx}"):
+            # 单张分析按钮
+            if st.button("分析", key=f"ana_{img_path}"):
                 with st.spinner("分析中..."):
-                    cat, conf = analyze_image(img_path)
-                    st.session_state[f"cat_{idx}"] = cat
-                    st.session_state[f"conf_{idx}"] = conf
-                    st.session_state[f"analyzed_{idx}"] = True
+                    analyze_image(img_path)
                 st.rerun()
-            if st.session_state.get(f"analyzed_{idx}", False):
-                cat = st.session_state[f"cat_{idx}"]
-                conf = st.session_state[f"conf_{idx}"]
+            # 显示分析结果
+            if img_path in st.session_state.analysis_results:
+                cat, conf = st.session_state.analysis_results[img_path]
                 if cat in ["Screenshot", "Blurry"]:
                     st.markdown(f'<div style="background-color:#EE475D; padding:8px; border-radius:8px; color:white;">建议删除 ({cat})<br>置信度 {conf:.0%}</div>', unsafe_allow_html=True)
-                    if st.button("删除", key=f"del_{idx}"):
+                    if st.button("删除", key=f"del_{img_path}"):
                         move_to_deleted(img_path)
-                        # 清除该图片的所有状态
-                        for key in [f"cat_{idx}", f"conf_{idx}", f"analyzed_{idx}"]:
-                            if key in st.session_state:
-                                del st.session_state[key]
-                        st.session_state.image_files.pop(idx)
                         st.rerun()
                 elif cat == "Normal":
                     st.markdown(f'<div style="background-color:#6E8B74; padding:8px; border-radius:8px; color:white;">建议保留<br>置信度 {conf:.0%}</div>', unsafe_allow_html=True)
+                elif cat == "Error":
+                    st.error("分析失败")
+            else:
+                st.info("点击「分析」")
 
     if st.button("一键清理所有AI建议删除的图片", use_container_width=True):
         delete_all_suggested()
