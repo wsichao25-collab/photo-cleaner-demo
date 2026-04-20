@@ -103,31 +103,14 @@ def analyze_all_images():
 
     # 创建占位符用于显示动画
     animation_placeholder = st.empty()
-    # 彩虹动画HTML（基于用户提供的样式，简化居中显示）
-    animation_html = """
-    <div style="display: flex; justify-content: center; align-items: center; margin: 20px;">
-        <div class="rainbow-loader" style="position: relative; width: 80px; height: 80px;">
-            <div style="position: absolute; left: 50%; top: 50%; width: 50%; height: 10px; transform-origin: left center; transform: rotate(0deg);">
-                <div style="position: absolute; right: 0; top: -5px; width: 20px; height: 20px; border-radius: 50%; background: red; animation: spin 1.2s linear infinite; animation-delay: 0s;"></div>
-            </div>
-            <!-- 重复12个点，为简洁，用CSS生成 -->
-        </div>
-    </div>
-    <style>
-        .rainbow-loader { position: relative; width: 80px; height: 80px; margin: auto; }
-        .rainbow-loader div { position: absolute; left: 50%; top: 50%; width: 50%; height: 10px; transform-origin: left center; }
-        .rainbow-loader div::after { content: ""; position: absolute; right: 0; top: -5px; width: 20px; height: 20px; border-radius: 50%; background: red; animation: spin 1.2s linear infinite; }
-        @keyframes spin { 0% { transform: scale(1); filter: hue-rotate(0deg); } 100% { transform: scale(0); filter: hue-rotate(360deg); } }
-    </style>
-    """
-    # 生成12个点
+    # 彩虹动画HTML（基于用户提供的样式）
     points_html = ""
     for i in range(12):
         deg = i * 30
         delay = -0.1 * i
         points_html += f"""
-        <div style="transform: rotate({deg}deg);">
-            <div style="animation-delay: {delay}s;"></div>
+        <div style="position: absolute; left: 50%; top: 50%; width: 50%; height: 10px; transform-origin: left center; transform: rotate({deg}deg);">
+            <div style="position: absolute; right: 0; top: -5px; width: 20px; height: 20px; border-radius: 50%; background: red; animation: spin 1.2s linear infinite; animation-delay: {delay}s;"></div>
         </div>
         """
     animation_html = f"""
@@ -137,13 +120,11 @@ def analyze_all_images():
         </div>
     </div>
     <style>
-        .rainbow-container div {{ position: absolute; left: 50%; top: 50%; width: 50%; height: 10px; transform-origin: left center; }}
-        .rainbow-container div::after {{ content: ""; position: absolute; right: 0; top: -5px; width: 20px; height: 20px; border-radius: 50%; background: red; animation: spin 1.2s linear infinite; }}
-        @keyframes spin {{ 0% {{ transform: scale(1); filter: hue-rotate(0deg); }} 100% {{ transform: scale(0); filter: hue-rotate(360deg); }} }}
+        @keyframes spin {{
+            0% {{ transform: scale(1); filter: hue-rotate(0deg); }}
+            100% {{ transform: scale(0); filter: hue-rotate(360deg); }}
+        }}
     </style>
-    <div class="rainbow-container" style="position: relative; width: 100px; height: 100px; margin: 0 auto;">
-        {points_html}
-    </div>
     """
     animation_placeholder.markdown(animation_html, unsafe_allow_html=True)
 
@@ -153,7 +134,6 @@ def analyze_all_images():
         st.session_state[f"cat_{idx}"] = category
         st.session_state[f"conf_{idx}"] = confidence
         st.session_state[f"analyzed_{idx}"] = True
-        # 可选：实时更新界面，但为了简单，一次性完成
     # 清除动画
     animation_placeholder.empty()
     st.success(f"已完成 {len(to_analyze)} 张图片的分析")
@@ -170,6 +150,7 @@ if not st.session_state.show_main:
     else:
         bg_url = "https://images.unsplash.com/photo-1516035069371-29a1b244cc32?w=1920&q=80"
 
+    # 注入样式和背景
     st.markdown(f"""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=ZCOOL+KuaiLe&display=swap');
@@ -191,37 +172,35 @@ if not st.session_state.show_main:
         font-family: "Helvetica Neue", "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
         font-size: 20px; font-weight: bold; color: #002FA7; text-align: center; margin-bottom: 3rem;
     }}
-    .start-btn {{
-        background-color: white; border: 1px solid #ccc; border-radius: 30px; padding: 10px 32px;
-        font-family: "Helvetica Neue", sans-serif; font-size: 14px; color: black; cursor: pointer;
-        transition: all 0.3s ease; box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    /* 自定义按钮样式，匹配原设计 */
+    div.stButton > button {{
+        background-color: white !important;
+        color: black !important;
+        border: 1px solid #ccc !important;
+        border-radius: 30px !important;
+        font-family: "Helvetica Neue", sans-serif !important;
+        font-size: 14px !important;
+        padding: 8px 32px !important;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1) !important;
+        transition: all 0.3s ease !important;
     }}
-    .start-btn:hover {{ transform: translateY(-2px); box-shadow: 0 6px 16px rgba(0,0,0,0.15); }}
+    div.stButton > button:hover {{
+        transform: translateY(-2px) !important;
+        box-shadow: 0 6px 16px rgba(0,0,0,0.15) !important;
+        background-color: #f8f8f8 !important;
+    }}
     </style>
     <div class="home-bg"></div>
     <div class="chinese-title">做你的图片小管家</div>
     <div class="english-sub">Be your own picture manager</div>
-    <div style="text-align: center;">
-        <button class="start-btn" id="startBtn">点击开始</button>
-    </div>
-    <script>
-        document.getElementById('startBtn').addEventListener('click', function() {{
-            document.getElementById('main-content').scrollIntoView({{ behavior: 'smooth' }});
-            // 通过设置session_state？但滚动不需要，为了保持状态，点击后直接设置show_main为True并刷新
-            // 但由于滚动已经实现，我们还可以设置一个标志避免再次显示首页
-            fetch('/?set_show_main=true');
-        }});
-    </script>
     """, unsafe_allow_html=True)
-    # 处理URL参数以设置show_main
-    query_params = st.query_params
-    if query_params.get("set_show_main") == ["true"]:
-        st.session_state.show_main = True
-        st.rerun()
-    # 添加锚点
-    st.markdown('<div id="main-content"></div>', unsafe_allow_html=True)
-    # 如果用户已经滚动到锚点，手动设置show_main？但为了体验，不自动设置，让按钮刷新
-    # 为了让首页只显示一次，点击按钮后刷新页面并带参数，上面已经处理
+    
+    # 使用 Streamlit 按钮（确保交互可靠）
+    col1, col2, col3 = st.columns([1, 1, 1])
+    with col2:
+        if st.button("点击开始", use_container_width=True):
+            st.session_state.show_main = True
+            st.rerun()
     st.stop()  # 不显示主界面
 
 # ========== 主界面 ==========
