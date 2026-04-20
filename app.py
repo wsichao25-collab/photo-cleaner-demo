@@ -29,11 +29,10 @@ if "image_files" not in st.session_state:
 if "cleaned_count" not in st.session_state:
     st.session_state.cleaned_count = 0
 if "show_main" not in st.session_state:
-    st.session_state.show_main = False   # 控制首页显示
+    st.session_state.show_main = False
 
 # ========== 辅助函数 ==========
 def analyze_image(image_path):
-    """调用 Novita AI 分析单张图片，返回 (category, confidence)"""
     with open(image_path, "rb") as f:
         img_base64 = base64.b64encode(f.read()).decode()
     headers = {
@@ -65,25 +64,21 @@ def analyze_image(image_path):
         return "Error", 0.0
 
 def move_to_deleted(file_path):
-    """移动文件到回收站"""
     src = Path(file_path)
     dst = DELETED_DIR / src.name
     shutil.move(str(src), str(dst))
     st.session_state.cleaned_count += 1
 
 def delete_all_suggested():
-    """一键删除所有建议删除的图片（已分析且为Screenshot/Blurry）"""
     to_delete = []
     for idx, img_path in enumerate(st.session_state.image_files):
         if st.session_state.get(f"analyzed_{idx}", False):
             cat = st.session_state.get(f"cat_{idx}", "")
             if cat in ["Screenshot", "Blurry"]:
                 to_delete.append((idx, img_path))
-    # 倒序删除避免索引错乱
     for idx, img_path in reversed(to_delete):
         move_to_deleted(img_path)
         st.session_state.image_files.pop(idx)
-        # 清除该图片的分析结果
         for key in [f"cat_{idx}", f"conf_{idx}", f"analyzed_{idx}"]:
             if key in st.session_state:
                 del st.session_state[key]
@@ -92,7 +87,6 @@ def delete_all_suggested():
 
 def analyze_all_images():
     """一键分析所有未分析的图片，显示彩虹动画"""
-    # 收集未分析的图片索引
     to_analyze = []
     for idx, img_path in enumerate(st.session_state.image_files):
         if not st.session_state.get(f"analyzed_{idx}", False):
@@ -101,20 +95,24 @@ def analyze_all_images():
         st.info("所有图片都已分析过")
         return
 
-    # 创建占位符用于显示动画
-    animation_placeholder = st.empty()
-    # 彩虹动画HTML（基于用户提供的样式）
+    # 彩虹动画占位符
+    anim_placeholder = st.empty()
+    
+    # 生成12个彩色点的动画HTML
     points_html = ""
     for i in range(12):
         deg = i * 30
         delay = -0.1 * i
+        # 每个点使用不同的初始色相
+        hue = i * 30
         points_html += f"""
         <div style="position: absolute; left: 50%; top: 50%; width: 50%; height: 10px; transform-origin: left center; transform: rotate({deg}deg);">
-            <div style="position: absolute; right: 0; top: -5px; width: 20px; height: 20px; border-radius: 50%; background: red; animation: spin 1.2s linear infinite; animation-delay: {delay}s;"></div>
+            <div style="position: absolute; right: 0; top: -5px; width: 20px; height: 20px; border-radius: 50%; background: hsl({hue}, 100%, 50%); animation: spin 1.2s linear infinite; animation-delay: {delay}s;"></div>
         </div>
         """
+    
     animation_html = f"""
-    <div style="display: flex; justify-content: center; margin: 20px;">
+    <div style="display: flex; justify-content: center; align-items: center; margin: 20px 0;">
         <div style="position: relative; width: 100px; height: 100px;">
             {points_html}
         </div>
@@ -126,22 +124,26 @@ def analyze_all_images():
         }}
     </style>
     """
-    animation_placeholder.markdown(animation_html, unsafe_allow_html=True)
-
+    anim_placeholder.markdown(animation_html, unsafe_allow_html=True)
+    
+    # 短暂延迟确保动画渲染
+    time.sleep(0.2)
+    
     # 逐个分析图片
     for idx, img_path in to_analyze:
         category, confidence = analyze_image(img_path)
         st.session_state[f"cat_{idx}"] = category
         st.session_state[f"conf_{idx}"] = confidence
         st.session_state[f"analyzed_{idx}"] = True
+    
     # 清除动画
-    animation_placeholder.empty()
+    anim_placeholder.empty()
     st.success(f"已完成 {len(to_analyze)} 张图片的分析")
+    time.sleep(0.5)
     st.rerun()
 
 # ========== 首页逻辑 ==========
 if not st.session_state.show_main:
-    # 背景图片base64（确保background1.jpg在仓库根目录）
     bg_path = Path(__file__).parent / "background1.jpg"
     if bg_path.exists():
         with open(bg_path, "rb") as f:
@@ -150,7 +152,6 @@ if not st.session_state.show_main:
     else:
         bg_url = "https://images.unsplash.com/photo-1516035069371-29a1b244cc32?w=1920&q=80"
 
-    # 注入样式和背景
     st.markdown(f"""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=ZCOOL+KuaiLe&display=swap');
@@ -172,7 +173,6 @@ if not st.session_state.show_main:
         font-family: "Helvetica Neue", "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
         font-size: 20px; font-weight: bold; color: #002FA7; text-align: center; margin-bottom: 3rem;
     }}
-    /* 自定义按钮样式，匹配原设计 */
     div.stButton > button {{
         background-color: white !important;
         color: black !important;
@@ -195,20 +195,18 @@ if not st.session_state.show_main:
     <div class="english-sub">Be your own picture manager</div>
     """, unsafe_allow_html=True)
     
-    # 使用 Streamlit 按钮（确保交互可靠）
     col1, col2, col3 = st.columns([1, 1, 1])
     with col2:
         if st.button("点击开始", use_container_width=True):
             st.session_state.show_main = True
             st.rerun()
-    st.stop()  # 不显示主界面
+    st.stop()
 
 # ========== 主界面 ==========
 st.title("智能相册清理器")
 st.header("AI 帮你判断截图、模糊照片", divider="rainbow")
 st.markdown("上传照片，一键清理，释放空间。支持截图识别、模糊检测、表情包过滤。")
 
-# 侧边栏
 with st.sidebar:
     st.markdown("## 智能相册管家")
     st.markdown("---")
@@ -243,7 +241,6 @@ with st.sidebar:
     else:
         st.info("回收站目录不存在")
 
-# 上传图片
 uploaded_files = st.file_uploader(
     "选择图片（支持 jpg/png）",
     type=["jpg", "jpeg", "png"],
@@ -259,9 +256,7 @@ if uploaded_files:
         if str(save_path) not in st.session_state.image_files:
             st.session_state.image_files.append(str(save_path))
 
-# 展示图片网格
 if st.session_state.image_files:
-    # 标题行：左侧“待清理的照片”，右侧“一键分析”按钮
     col_title, col_btn = st.columns([3, 1])
     with col_title:
         st.subheader("待清理的照片")
@@ -286,7 +281,6 @@ if st.session_state.image_files:
                     category = st.session_state[f"cat_{idx}"]
                     confidence = st.session_state[f"conf_{idx}"]
                     if category in ["Screenshot", "Blurry"]:
-                        # 红色背景
                         st.markdown(
                             f'<div style="background-color:#EE475D; padding:8px; border-radius:8px; color:white; font-weight:bold;">建议删除 ({category})<br>置信度 {confidence:.0%}</div>',
                             unsafe_allow_html=True
@@ -294,13 +288,11 @@ if st.session_state.image_files:
                         if st.button("删除", key=f"del_{idx}"):
                             move_to_deleted(img_path)
                             st.session_state.image_files.pop(idx)
-                            # 清除该图片的分析结果
                             for key in [f"cat_{idx}", f"conf_{idx}", f"analyzed_{idx}"]:
                                 if key in st.session_state:
                                     del st.session_state[key]
                             st.rerun()
                     elif category == "Normal":
-                        # 绿色背景
                         st.markdown(
                             f'<div style="background-color:#6E8B74; padding:8px; border-radius:8px; color:white; font-weight:bold;">建议保留<br>置信度 {confidence:.0%}</div>',
                             unsafe_allow_html=True
@@ -308,7 +300,6 @@ if st.session_state.image_files:
                     else:
                         st.error("分析失败")
 
-    # 一键清理按钮
     if st.button("一键清理所有AI建议删除的图片", use_container_width=True):
         delete_all_suggested()
 else:
